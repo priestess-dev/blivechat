@@ -61,7 +61,8 @@ def init():
     logger.info('App started, initializing')
     config.init(args)
 
-    utils.request.init()
+    # utils.request.init()
+    utils.request.init(cookie_path=os.path.join(config.DATA_PATH, 'cookies.txt'))
     models.database.init()
 
     services.avatar.init()

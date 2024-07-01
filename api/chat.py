@@ -455,10 +455,61 @@ class TextEmoticonMappingsHandler(api.base.ApiHandler):
         cfg = config.get_config()
         self.write({'textEmoticons': cfg.text_emoticons})
 
+class ReplyHandler(api.base.ApiHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Headers", "x-requested-with")
+        self.set_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+
+    async def options(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Headers", "x-requested-with")
+        self.set_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.write({
+          "data": "pong"
+        })
+    
+    async def get(self):
+        self.write("pong")
+
+    async def post(self):
+        
+        logger.info('QR=%s post %s', self.request.remote_ip, self.json_args)
+        if self.json_args:
+            uid, author_name, content = self.json_args.get('uid'), self.json_args.get('name', 'Host'), self.json_args.get('content', '')
+        else:
+            json_data = json.loads(self.request.body.decode("utf-8"))
+            uid, author_name, content = json_data.get('uid'), json_data.get('name', 'Host'), json_data.get('content', '')
+        uid = uid if (uid and uid != -1) else None
+        room_id = set(services.chat.client_room_manager._rooms.keys())
+        if len(room_id) != 1:
+            logger.warning('[QuickReply] room owner id is not unique, quick reply can not handle multiple live rooms')
+        room_id = list(room_id)[0]
+        room_owner_id = services.chat._live_client_manager._live_clients[room_id]._room_owner_uid
+        logger.info(f'[QuickReply] sending message to room {room_id}, owner uid is {room_owner_id}')
+        avatar_url = await services.avatar.get_avatar_url(uid, author_name)
+        text_message = make_text_message_data(
+            avatar_url=avatar_url,
+            timestamp=int(time.time()),
+            author_name=author_name,
+            author_type=3 if (uid == room_owner_id or room_owner_id is None) else 2,
+            content=content,
+            author_level=0,
+            id_=uuid.uuid4().hex,
+            privilege_type=0,
+            is_newbie=False,
+            is_gift_danmaku=False,
+            is_mobile_verified=True,
+            medal_level=0
+        )
+        # force send message to all rooms :)
+        for room in services.chat.client_room_manager._rooms.values():
+            room.send_cmd_data(Command.ADD_TEXT, text_message)
 
 ROUTES = [
     (r'/api/chat', ChatHandler),
     (r'/api/room_info', RoomInfoHandler),
     (r'/api/avatar_url', AvatarHandler),
     (r'/api/text_emoticon_mappings', TextEmoticonMappingsHandler),
+    (r'/api/reply', ReplyHandler),
 ]
